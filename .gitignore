@@ -1,3 +1,7 @@
+# Rust workspace
+/target
+**/*.rs.bk
+
 ## Windows
 
 *.exe
