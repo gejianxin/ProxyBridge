@@ -35,6 +35,20 @@ With no rules in the file, one enabled catch-all rule proxies matching traffic. 
 
 Process rules use `/proc` on Linux, the IP helper tables (`GetExtendedTcpTable` / `GetExtendedUdpTable`) on Windows, and libproc on macOS. The macOS layout follows xnu `proc_info.h` and still needs a Mac to confirm a live socket. The Network Extension sends the app signing identifier in the flow header, because the helper's TCP peer is the extension, not the app. Domain rules match a name the client sent, or a name learned from a DNS reply that ProxyBridge itself forwarded. DoH and DoT are not visible.
 
+## Release zips
+
+Runtime-only archives live in `dist/` and are rebuilt by [`.github/workflows/release-zips.yml`](.github/workflows/release-zips.yml). Each zip has the release binary, `proxybridge.toml` (SOCKS5 `127.0.0.1:7898`), and `README-run.txt`. No source, tests, or CI files are inside.
+
+| Zip | How it is produced |
+| --- | --- |
+| `dist/proxybridge-linux-x64.zip` | This repo, `scripts/package-release.sh x86_64-unknown-linux-gnu proxybridge-linux-x64` |
+| `dist/proxybridge-linux-arm64.zip` | Same script with `aarch64-unknown-linux-gnu` |
+| `dist/proxybridge-windows-x64.zip` | Windows linker. The zip adds unmodified WinDivert 2.2.2 `WinDivert.dll` and `WinDivert64.sys` when the download works, plus `LICENSE-WinDivert.txt` and `NOTICE.txt`. |
+| `dist/proxybridge-macos-arm64.zip` | macOS runner in the workflow. Not linked from Linux. |
+| `dist/proxybridge-macos-x64.zip` | macOS runner in the workflow. Not linked from Linux. |
+
+On a published GitHub release the workflow attaches those zips. Pull requests upload them as Actions artifacts.
+
 ## Build
 
 Rust 1.85 or newer. From the repository root:
