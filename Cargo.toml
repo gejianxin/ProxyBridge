@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/proxybridge-core",
+    "crates/proxybridge-platform",
+    "crates/proxybridge-cli",
+]
+default-members = [
+    "crates/proxybridge-core",
+    "crates/proxybridge-platform",
+    "crates/proxybridge-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["InterceptSuite", "ProxyBridge contributors"]
+repository = "https://github.com/gejianxin/ProxyBridge"
+rust-version = "1.85"
+publish = false
+
+[workspace.dependencies]
+proxybridge-core = { path = "crates/proxybridge-core" }
+proxybridge-platform = { path = "crates/proxybridge-platform" }
+tokio = { version = "1.42", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+thiserror = "1.0"
+quick-xml = "0.37"
+tracing = "0.1"
+clap = { version = "4.5", features = ["derive"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+libc = "0.2"

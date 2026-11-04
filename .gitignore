@@ -1,9 +1,15 @@
+# Rust workspace
+/target
+**/*.rs.bk
+
 ## Windows
 
 *.exe
 *.dll
 *.sys
 *.zip
+# Runtime release archives produced by scripts/package-release.sh
+!dist/proxybridge-*.zip
 *.py
 build/**
 *.pyc

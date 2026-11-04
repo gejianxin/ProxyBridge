@@ -1,0 +1,59 @@
+# ProxyBridge configuration.
+#
+# The coded default, used when this file is absent and no flag or environment
+# variable overrides it, is the same endpoint: SOCKS5 at 127.0.0.1:7898.
+#
+# Precedence: this file, then PROXYBRIDGE_PROXY_TYPE / PROXYBRIDGE_PROXY_HOST /
+# PROXYBRIDGE_PROXY_PORT / PROXYBRIDGE_PROXY_USERNAME / PROXYBRIDGE_PROXY_PASSWORD
+# / PROXYBRIDGE_SEND_DOMAIN / PROXYBRIDGE_DNS_VIA_PROXY / PROXYBRIDGE_ENABLED,
+# then CLI flags (--proxy, --proxy-type, --proxy-host, --proxy-port, ...).
+# PROXYBRIDGE_CONFIG selects a different file. --no-config ignores the file.
+
+enabled = true
+dns_via_proxy = false
+log_every_connection = false
+
+[proxy]
+name = "default"
+type = "socks5"
+host = "127.0.0.1"
+port = 7898
+send_domain = true
+# username = ""
+# password = ""
+
+# Additional upstreams. Rules select them with proxy = "name".
+# The name "default" is reserved for the [proxy] entry above.
+# [[proxies]]
+# name = "http-local"
+# type = "http"
+# host = "127.0.0.1"
+# port = 8080
+
+# First enabled match wins. With no [[rules]] entries at all, ProxyBridge uses
+# one catch-all proxy rule. An explicit empty list means every flow is direct
+# (apart from the fact that there is nothing to proxy).
+
+[[rules]]
+name = "default"
+process = "*"
+hosts = "*"
+ports = "*"
+protocol = "both"
+action = "proxy"
+proxy = "default"
+localhost = false
+enabled = true
+
+# Loopback, multicast, broadcast, the proxy's own address, DHCP, and port 53
+# (unless dns_via_proxy is true) stay direct even when a rule says proxy.
+# Set localhost = true on a proxy rule to send 127.0.0.0/8 and ::1 through it.
+
+# [[rules]]
+# name = "lan-direct"
+# process = "*"
+# hosts = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+# ports = "*"
+# protocol = "both"
+# action = "direct"
+# enabled = true
