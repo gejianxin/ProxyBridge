@@ -9,6 +9,7 @@ mod decision;
 mod dns;
 mod error;
 mod http_connect;
+mod ppx;
 mod relay;
 mod rules;
 mod socks5;

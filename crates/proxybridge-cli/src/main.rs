@@ -45,7 +45,7 @@ enum Command {
 
 #[derive(Args, Debug)]
 struct CommonArgs {
-    /// TOML configuration file. Defaults to ./proxybridge.toml when that file exists.
+    /// TOML or Proxifier .ppx file. Defaults to ./proxybridge.toml when that file exists.
     #[arg(long)]
     config: Option<PathBuf>,
     /// Ignore ./proxybridge.toml and PROXYBRIDGE_CONFIG; start from built-in defaults.
@@ -250,11 +250,7 @@ fn decide_line(config: &Config, args: &DecideArgs) -> Result<String, Box<dyn std
 
 fn load_config(args: &CommonArgs) -> Result<Config, Box<dyn std::error::Error>> {
     let mut config = match resolve_path(args)? {
-        Some(path) => {
-            let text = std::fs::read_to_string(&path)
-                .map_err(|err| format!("could not read {}: {err}", path.display()))?;
-            Config::from_toml_str(&text)?
-        }
+        Some(path) => Config::from_path(&path)?,
         None => Config::builtin(),
     };
     config.apply_overrides(&overrides_from_env()?)?;

@@ -239,6 +239,9 @@ fn looks_like_domain(tok: &str) -> bool {
 }
 
 fn parse_domain(rule: &str, tok: &str) -> Result<String> {
+    if tok.eq_ignore_ascii_case("%ComputerName%") {
+        return Ok("%computername%".into());
+    }
     if tok.len() > 253 || tok.is_empty() {
         return Err(Error::Rule(format!(
             "rule '{rule}': invalid domain pattern '{tok}'"
@@ -570,8 +573,45 @@ fn name_matches(domains: &[String], host: Option<&str>) -> bool {
         return false;
     };
     let host = trim_dot(&host.to_ascii_lowercase());
-    domains.iter().any(|pat| glob_match(pat, &host))
+    domains.iter().any(|pat| {
+        if pat == "%computername%" {
+            computer_names().iter().any(|name| {
+                let name = name.trim().trim_end_matches('.').to_ascii_lowercase();
+                !name.is_empty() && (host == name || host.starts_with(&(name + ".")))
+            })
+        } else {
+            glob_match(pat, &host)
+        }
+    })
 }
+
+fn computer_names() -> Vec<String> {
+    #[cfg(test)]
+    {
+        if let Some(names) = TEST_COMPUTER_NAMES.lock().unwrap().clone() {
+            return names;
+        }
+    }
+    let mut names = Vec::new();
+    for key in ["COMPUTERNAME", "HOSTNAME"] {
+        if let Ok(value) = std::env::var(key) {
+            if !value.trim().is_empty() {
+                names.push(value);
+            }
+        }
+    }
+    if let Ok(text) = std::fs::read_to_string("/etc/hostname") {
+        let text = text.trim();
+        if !text.is_empty() {
+            names.push(text.to_string());
+        }
+    }
+    names
+}
+
+#[cfg(test)]
+pub(crate) static TEST_COMPUTER_NAMES: std::sync::Mutex<Option<Vec<String>>> =
+    std::sync::Mutex::new(None);
 
 fn trim_dot(host: &str) -> String {
     host.trim_end_matches('.').to_string()

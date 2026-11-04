@@ -85,6 +85,9 @@ impl Config {
         if flow.dest_port == 53 && !self.dns_via_proxy {
             return direct(None, "implicit direct");
         }
+        if self.udp_bypass && flow.protocol == Transport::Udp {
+            return direct(None, "udp bypass");
+        }
 
         let tcp = flow.protocol == Transport::Tcp;
         let matched = self.rules.iter().find(|rule| {

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ProxifierProfile version="102" platform="Windows" product_id="0" product_minver="400">
+	<Options>
+		<Resolve>
+			<AutoModeDetection enabled="false" />
+			<ViaProxy enabled="false" />
+			<BlockNonATypes enabled="false" />
+			<ExclusionList OnlyFromListMode="false">%ComputerName%; localhost; *.local</ExclusionList>
+			<DnsUdpMode>0</DnsUdpMode>
+		</Resolve>
+		<Encryption mode="disabled" />
+		<ConnectionLoopDetection enabled="true" resolve="true" />
+		<Udp mode="mode_bypass" />
+		<LeakPreventionMode enabled="false" />
+		<ProcessOtherUsers enabled="false" />
+		<ProcessServices enabled="false" />
+		<HandleDirectConnections enabled="false" />
+		<HttpProxiesSupport enabled="false" />
+	</Options>
+	<ProxyList>
+		<Proxy id="100" type="SOCKS5">
+			<Options>48</Options>
+			<Port>7898</Port>
+			<Address>127.0.0.1</Address>
+		</Proxy>
+	</ProxyList>
+	<ChainList />
+	<RuleList>
+		<Rule enabled="true">
+			<Action type="Direct" />
+			<Targets>localhost; 127.0.0.1; %ComputerName%; ::1</Targets>
+			<Name>Localhost</Name>
+		</Rule>
+		<Rule enabled="true">
+			<Action type="Direct" />
+			<Applications>svchost.exe</Applications>
+			<Name>svchost.exe [auto-created]</Name>
+		</Rule>
+		<Rule enabled="true">
+			<Action type="Direct" />
+			<Applications>verge-mihomo.exe</Applications>
+			<Name>verge-mihomo.exe [auto-created]</Name>
+		</Rule>
+		<Rule enabled="false">
+			<Action type="Proxy">100</Action>
+			<Applications>antigravity.exe; language_server.exe; language_server_windows_x64.exe; "antigravity ide.exe"; node.exe</Applications>
+			<Name>Antigravity</Name>
+		</Rule>
+		<Rule enabled="true">
+			<Action type="Direct" />
+			<Applications>msedge.exe</Applications>
+			<Name>Edge</Name>
+		</Rule>
+		<Rule enabled="true">
+			<Action type="Proxy">100</Action>
+			<Targets>*.google.com;*.google.*;*.google*.com;*.google.dev;*.antigravity.google;*.gvt1.com; *.google.com.*;*.google.co.*;*.youtube.com;*.youtu.be;*.github.com;*.githubusercontent.com;*.github.io;*.docker.com;*.docker.io;*.amazonaws.com;*.amazoncognito.com;*.yahoo.com;*.yahoo.net;*.yimg.com;*.yusercontent.com;*.live.com;*.microsoft.com;*.adtidy.org;*.adguard.org;*.pypi.org</Targets>
+			<Name>Dev</Name>
+		</Rule>
+		<Rule enabled="true">
+			<Action type="Proxy">100</Action>
+			<Targets>*.openai.com;*.chatgpt.com;*.cloudflare-dns.com;*.featureassets.org;*.claude.ai;*.claude.com;*.anthropic.com;*.honeycomb.io;*.tabbit.ai;*.x.ai;*.grok.com;*.googleapis.com;*.nvidia.com;*.b.ai;*.grok.com;</Targets>
+			<Name>AI</Name>
+		</Rule>
+		<Rule enabled="true">
+			<Action type="Proxy">100</Action>
+			<Targets>*.steampowered.com;*.steamcommunity.com;*.spotify.com;*.amazon.com</Targets>
+			<Name>Game</Name>
+		</Rule>
+		<Rule enabled="true">
+			<Action type="Direct" />
+			<Name>Default</Name>
+		</Rule>
+	</RuleList>
+</ProxifierProfile>

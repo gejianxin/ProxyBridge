@@ -1,0 +1,107 @@
+# Converted from profiles/user-proxifier-profile.ppx (Proxifier 102, Windows).
+# The binary also loads that .ppx directly: proxybridge --config profiles/user-proxifier-profile.ppx
+#
+# ViaProxy is false, so names are resolved locally (send_domain = false) and
+# port 53 stays direct (dns_via_proxy = false). DNS exclusions
+# (%ComputerName%, localhost, *.local) are on the Localhost rule.
+# Udp mode="mode_bypass" is udp_bypass: UDP never uses the proxy.
+# Proxy rules are also TCP-only, so turning udp_bypass off still leaves UDP direct.
+# Antigravity is disabled, matching enabled="false" in the .ppx.
+# Not represented: proxy chains, encryption, leak prevention, other-users/services.
+
+enabled = true
+dns_via_proxy = false
+udp_bypass = true
+log_every_connection = false
+
+[proxy]
+name = "default"
+type = "socks5"
+host = "127.0.0.1"
+port = 7898
+send_domain = false
+
+[[rules]]
+name = "Localhost"
+process = "*"
+hosts = "localhost;127.0.0.1;%ComputerName%;::1;*.local"
+ports = "*"
+protocol = "both"
+action = "direct"
+enabled = true
+
+[[rules]]
+name = "svchost.exe [auto-created]"
+process = "svchost.exe"
+hosts = "*"
+ports = "*"
+protocol = "both"
+action = "direct"
+enabled = true
+
+[[rules]]
+name = "verge-mihomo.exe [auto-created]"
+process = "verge-mihomo.exe"
+hosts = "*"
+ports = "*"
+protocol = "both"
+action = "direct"
+enabled = true
+
+[[rules]]
+name = "Antigravity"
+process = "antigravity.exe;language_server.exe;language_server_windows_x64.exe;antigravity ide.exe;node.exe"
+hosts = "*"
+ports = "*"
+protocol = "tcp"
+action = "proxy"
+proxy = "default"
+enabled = false
+
+[[rules]]
+name = "Edge"
+process = "msedge.exe"
+hosts = "*"
+ports = "*"
+protocol = "both"
+action = "direct"
+enabled = true
+
+[[rules]]
+name = "Dev"
+process = "*"
+hosts = "*.google.com;*.google.*;*.google*.com;*.google.dev;*.antigravity.google;*.gvt1.com;*.google.com.*;*.google.co.*;*.youtube.com;*.youtu.be;*.github.com;*.githubusercontent.com;*.github.io;*.docker.com;*.docker.io;*.amazonaws.com;*.amazoncognito.com;*.yahoo.com;*.yahoo.net;*.yimg.com;*.yusercontent.com;*.live.com;*.microsoft.com;*.adtidy.org;*.adguard.org;*.pypi.org"
+ports = "*"
+protocol = "tcp"
+action = "proxy"
+proxy = "default"
+enabled = true
+
+[[rules]]
+name = "AI"
+process = "*"
+hosts = "*.openai.com;*.chatgpt.com;*.cloudflare-dns.com;*.featureassets.org;*.claude.ai;*.claude.com;*.anthropic.com;*.honeycomb.io;*.tabbit.ai;*.x.ai;*.grok.com;*.googleapis.com;*.nvidia.com;*.b.ai"
+ports = "*"
+protocol = "tcp"
+action = "proxy"
+proxy = "default"
+enabled = true
+
+[[rules]]
+name = "Game"
+process = "*"
+hosts = "*.steampowered.com;*.steamcommunity.com;*.spotify.com;*.amazon.com"
+ports = "*"
+protocol = "tcp"
+action = "proxy"
+proxy = "default"
+enabled = true
+
+[[rules]]
+name = "Default"
+process = "*"
+hosts = "*"
+ports = "*"
+protocol = "both"
+action = "direct"
+enabled = true

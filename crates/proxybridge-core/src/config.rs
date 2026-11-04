@@ -117,6 +117,8 @@ pub struct Overrides {
 pub struct Config {
     pub enabled: bool,
     pub dns_via_proxy: bool,
+    /// When true, UDP is left direct. Proxifier `Udp mode="mode_bypass"` maps here.
+    pub udp_bypass: bool,
     pub log_every_connection: bool,
     pub proxies: Vec<ProxyEndpoint>,
     pub rules: Vec<CompiledRule>,
@@ -131,6 +133,7 @@ impl Config {
         Self {
             enabled: true,
             dns_via_proxy: false,
+            udp_bypass: false,
             log_every_connection: false,
             proxies: vec![proxy],
             rules,
@@ -198,8 +201,8 @@ impl Config {
     pub fn summary(&self) -> String {
         let mut out = String::new();
         out.push_str(&format!(
-            "enabled={}\ndns_via_proxy={}\nlog_every_connection={}\n",
-            self.enabled, self.dns_via_proxy, self.log_every_connection
+            "enabled={}\ndns_via_proxy={}\nudp_bypass={}\nlog_every_connection={}\n",
+            self.enabled, self.dns_via_proxy, self.udp_bypass, self.log_every_connection
         ));
         for (i, proxy) in self.proxies.iter().enumerate() {
             let role = if i == 0 { "primary" } else { "extra" };
@@ -360,6 +363,8 @@ struct FileConfig {
     #[serde(default)]
     dns_via_proxy: bool,
     #[serde(default)]
+    udp_bypass: bool,
+    #[serde(default)]
     log_every_connection: bool,
     #[serde(default)]
     proxy: Option<ProxyFile>,
@@ -480,6 +485,7 @@ impl FileConfig {
         Ok(Config {
             enabled: self.enabled,
             dns_via_proxy: self.dns_via_proxy,
+            udp_bypass: self.udp_bypass,
             log_every_connection: self.log_every_connection,
             proxies,
             rules,

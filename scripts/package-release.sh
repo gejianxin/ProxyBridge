@@ -136,7 +136,15 @@ case "$TARGET" in
 esac
 chmod +x "${STAGE}/${BIN_NAME}" 2>/dev/null || true
 
-cp proxybridge.toml "${STAGE}/proxybridge.toml"
+if [[ -f profiles/user-proxifier-profile.toml ]]; then
+  cp profiles/user-proxifier-profile.toml "${STAGE}/proxybridge.toml"
+else
+  cp proxybridge.toml "${STAGE}/proxybridge.toml"
+fi
+if [[ -d profiles ]]; then
+  mkdir -p "${STAGE}/profiles"
+  find profiles -maxdepth 1 -type f \( -name '*.ppx' -o -name '*.toml' \) -exec cp {} "${STAGE}/profiles/" \;
+fi
 
 if [[ "$TARGET" == *windows* ]]; then
   RUN_BIN="proxybridge.exe"
@@ -147,9 +155,13 @@ fi
 cat > "${STAGE}/README-run.txt" <<EOF
 ProxyBridge runtime (${ZIP_NAME})
 
-Default upstream is SOCKS5 at 127.0.0.1:7898. That value is already in
-proxybridge.toml. Start this program from the directory that contains the
-toml file. CLI flags and PROXYBRIDGE_PROXY_* override it.
+Default upstream is SOCKS5 at 127.0.0.1:7898.
+proxybridge.toml is the Proxifier profile (Direct by default, proxy for the
+Dev/AI/Game domain lists, UDP left direct). The original .ppx and the same
+toml are in profiles/. Start from this directory so ./proxybridge.toml loads.
+CLI flags and PROXYBRIDGE_PROXY_* override the file.
+You can also pass the original profile:
+  ${RUN_BIN} config --config profiles/user-proxifier-profile.ppx
 
   ${RUN_BIN} run --mode socks
   ${RUN_BIN} config
@@ -175,10 +187,11 @@ rm -f "$OUT"
 import os, sys, zipfile
 stage, dest = sys.argv[1], sys.argv[2]
 with zipfile.ZipFile(dest, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-    for name in sorted(os.listdir(stage)):
-        path = os.path.join(stage, name)
-        if os.path.isfile(path):
-            zf.write(path, name)
+    for dirpath, _, files in os.walk(stage):
+        for name in sorted(files):
+            path = os.path.join(dirpath, name)
+            arc = os.path.relpath(path, stage).replace(os.sep, "/")
+            zf.write(path, arc)
 print(dest)
 PY
 

@@ -18,7 +18,9 @@ That default is used when no config file is loaded. It is also the default for e
 | Environment | `PROXYBRIDGE_PROXY_TYPE`, `PROXYBRIDGE_PROXY_HOST`, `PROXYBRIDGE_PROXY_PORT`, plus `PROXYBRIDGE_PROXY_USERNAME`, `PROXYBRIDGE_PROXY_PASSWORD`, `PROXYBRIDGE_SEND_DOMAIN`, `PROXYBRIDGE_DNS_VIA_PROXY`, `PROXYBRIDGE_ENABLED` |
 | CLI | `--proxy socks5://127.0.0.1:7898`, or `--proxy-type`, `--proxy-host`, `--proxy-port`, `--proxy-user`, `--proxy-pass` |
 
-`PROXYBRIDGE_CONFIG` selects a file. `--config` overrides that. `--no-config` ignores the file and starts from the built-in default. `./proxybridge.toml` is loaded automatically when you run from a directory that contains it.
+`PROXYBRIDGE_CONFIG` selects a file. `--config` overrides that and accepts either `proxybridge.toml` or a Proxifier `.ppx`. `--no-config` ignores the file and starts from the built-in default. `./proxybridge.toml` is loaded automatically when you run from a directory that contains it.
+
+`profiles/user-proxifier-profile.ppx` is a Proxifier 102 profile (SOCKS5 `127.0.0.1:7898`). `profiles/user-proxifier-profile.toml` is the same rules in this project's format. Release zips ship both, and use the converted file as `proxybridge.toml`.
 
 With no rules in the file, one enabled catch-all rule proxies matching traffic. Loopback, multicast, broadcast, the unspecified address, IPv6 link-local, DHCP, port 53 (unless `dns_via_proxy` is true), and the proxy's own address stay direct. A proxy rule sends loopback only when `localhost = true`. Block and direct rules do not apply to loopback. This matches the original userspace matcher closely enough that the usual "don't proxy yourself" cases hold.
 
@@ -37,7 +39,7 @@ Process rules use `/proc` on Linux, the IP helper tables (`GetExtendedTcpTable` 
 
 ## Release zips
 
-Runtime-only archives live in `dist/` and are rebuilt by [`.github/workflows/release-zips.yml`](.github/workflows/release-zips.yml). Each zip has the release binary, `proxybridge.toml` (SOCKS5 `127.0.0.1:7898`), and `README-run.txt`. No source, tests, or CI files are inside.
+Runtime-only archives live in `dist/` and are rebuilt by [`.github/workflows/release-zips.yml`](.github/workflows/release-zips.yml). Each zip has the release binary, `proxybridge.toml` (the converted Proxifier profile, SOCKS5 `127.0.0.1:7898`), `profiles/user-proxifier-profile.ppx`, `profiles/user-proxifier-profile.toml`, and `README-run.txt`. No source, tests, or CI files are inside.
 
 | Zip | How it is produced |
 | --- | --- |
