@@ -35,6 +35,8 @@ pub struct Flow {
     pub process_path: Option<String>,
     pub dest_ip: Option<IpAddr>,
     pub dest_host: Option<String>,
+    /// Names learned from DNS replies for `dest_ip`. Domain rules match any of them.
+    pub learned_names: Vec<String>,
     pub dest_port: u16,
     pub protocol: Transport,
 }
@@ -90,7 +92,10 @@ impl Config {
                 rule,
                 flow.process_path.as_deref(),
                 flow.dest_ip,
-                flow.dest_host.as_deref(),
+                crate::rules::NameSet {
+                    host: flow.dest_host.as_deref(),
+                    extra: &flow.learned_names,
+                },
                 flow.dest_port,
                 tcp,
                 self.case_insensitive_process,
@@ -146,6 +151,7 @@ mod tests {
             process_path: Some("curl".into()),
             dest_ip: Some(ip.parse().unwrap()),
             dest_host: None,
+            learned_names: Vec::new(),
             dest_port: port,
             protocol: proto,
         }
@@ -251,6 +257,34 @@ action = "direct"
             process_path: Some("app".into()),
             dest_ip: Some("93.184.216.34".parse().unwrap()),
             dest_host: Some("www.example.com".into()),
+            learned_names: Vec::new(),
+            dest_port: 443,
+            protocol: Transport::Tcp,
+        };
+        let d = cfg.decide(&flow);
+        assert_eq!(d.rule.as_deref(), Some("example"));
+        assert!(matches!(d.action, DecisionAction::Proxy(_)));
+    }
+
+    #[test]
+    fn learned_dns_name_matches_a_domain_rule() {
+        let cfg = Config::from_toml_str(
+            r#"
+[[rules]]
+name = "example"
+hosts = "*.example.com"
+action = "proxy"
+[[rules]]
+name = "other"
+action = "direct"
+"#,
+        )
+        .unwrap();
+        let flow = Flow {
+            process_path: Some("app".into()),
+            dest_ip: Some("93.184.216.34".parse().unwrap()),
+            dest_host: None,
+            learned_names: vec!["www.example.com".into()],
             dest_port: 443,
             protocol: Transport::Tcp,
         };

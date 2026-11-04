@@ -1,28 +1,37 @@
 //! Platform backends for ProxyBridge.
 //!
-//! `--mode socks` is implemented for every target: it is a userspace SOCKS5
-//! listener that applies the shared rule engine and opens a SOCKS5 or HTTP
-//! CONNECT tunnel. Linux also has a transparent TCP listener that reads
-//! `SO_ORIGINAL_DST` after an iptables `REDIRECT` rule. WinDivert and the
-//! macOS Network Extension are explicit stubs.
+//! `--mode socks` is implemented for every target. Linux `redirect` covers TCP
+//! and UDP. Windows `windivert` rewrites IPv4 packets when WinDivert.dll is
+//! installed. `--mode extension` is the helper a signed macOS Network
+//! Extension connects to.
 
 mod backends;
 mod bridge;
+mod extension;
 mod iptables;
 mod local_socks;
 mod macos;
+mod packet;
 mod process;
 mod redirect;
 mod windows;
 
 #[cfg(target_os = "linux")]
 mod linux_net;
+#[cfg(target_os = "macos")]
+mod macos_proc;
+#[cfg(target_os = "linux")]
+mod udp_redirect;
+#[cfg(windows)]
+mod windivert_driver;
+#[cfg(windows)]
+mod windows_proc;
 
 pub use backends::{backend_lines, BackendStatus};
 pub use bridge::BridgeError;
+pub use extension::{encode_header, ExtensionBridge};
 pub use iptables::iptables_script;
 pub use local_socks::LocalSocks;
+pub use macos::EXTENSION_HELPER_PORT;
 pub use redirect::RedirectProxy;
-
-pub use macos::start_network_extension;
-pub use windows::start_windivert;
+pub use windows::WinDivertProxy;

@@ -103,8 +103,10 @@ fn backends_and_iptables_are_honest() {
     let text = String::from_utf8(output.stdout).unwrap();
     assert!(output.status.success(), "{text}");
     assert!(text.contains("windivert"));
-    assert!(text.contains("stub"));
+    assert!(text.contains("driver-required"));
+    assert!(text.contains("WinDivert.dll"));
     assert!(text.contains("network-extension"));
+    assert!(text.contains("signing-required"));
     assert!(text.contains("socks"));
 
     let output = bin()

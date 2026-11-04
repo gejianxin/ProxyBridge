@@ -469,11 +469,16 @@ fn v6_prefix(ip: u128, prefix: u8) -> (u128, u128) {
     (ip & mask, ip | !mask)
 }
 
+pub(crate) struct NameSet<'a> {
+    pub host: Option<&'a str>,
+    pub extra: &'a [String],
+}
+
 pub(crate) fn rule_matches(
     rule: &CompiledRule,
     process_path: Option<&str>,
     dest_ip: Option<IpAddr>,
-    dest_host: Option<&str>,
+    names: NameSet<'_>,
     dest_port: u16,
     protocol_tcp: bool,
     case_insensitive_process: bool,
@@ -487,7 +492,7 @@ pub(crate) fn rule_matches(
     if !process_matches(rule, process_path, case_insensitive_process) {
         return false;
     }
-    dest_matches(rule, dest_ip, dest_host, dest_port)
+    dest_matches(rule, dest_ip, names, dest_port)
 }
 
 fn protocol_matches(rule: RuleProtocol, tcp: bool) -> bool {
@@ -528,7 +533,7 @@ fn process_matches(rule: &CompiledRule, path: Option<&str>, case_insensitive: bo
 fn dest_matches(
     rule: &CompiledRule,
     dest_ip: Option<IpAddr>,
-    dest_host: Option<&str>,
+    names: NameSet<'_>,
     dest_port: u16,
 ) -> bool {
     if !rule.any_port
@@ -547,13 +552,25 @@ fn dest_matches(
             return true;
         }
     }
-    if let Some(host) = dest_host {
-        let host = trim_dot(&host.to_ascii_lowercase());
-        if rule.domains.iter().any(|pat| glob_match(pat, &host)) {
-            return true;
-        }
+    if name_matches(&rule.domains, names.host) {
+        return true;
+    }
+    if names
+        .extra
+        .iter()
+        .any(|name| name_matches(&rule.domains, Some(name)))
+    {
+        return true;
     }
     false
+}
+
+fn name_matches(domains: &[String], host: Option<&str>) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    let host = trim_dot(&host.to_ascii_lowercase());
+    domains.iter().any(|pat| glob_match(pat, &host))
 }
 
 fn trim_dot(host: &str) -> String {
@@ -655,7 +672,18 @@ mod tests {
 
     fn matches(rule: &CompiledRule, ip: &str, port: u16) -> bool {
         let ip: IpAddr = ip.parse().unwrap();
-        rule_matches(rule, Some("curl"), Some(ip), None, port, true, false)
+        rule_matches(
+            rule,
+            Some("curl"),
+            Some(ip),
+            NameSet {
+                host: None,
+                extra: &[],
+            },
+            port,
+            true,
+            false,
+        )
     }
 
     #[test]
@@ -694,7 +722,10 @@ mod tests {
             &r,
             Some("/usr/bin/curl"),
             None,
-            Some("A.Example.com."),
+            NameSet {
+                host: Some("A.Example.com."),
+                extra: &[],
+            },
             443,
             true,
             false
@@ -703,7 +734,10 @@ mod tests {
             &r,
             Some("/usr/bin/curl"),
             None,
-            Some("example.com"),
+            NameSet {
+                host: Some("example.com"),
+                extra: &[],
+            },
             443,
             true,
             false
@@ -712,7 +746,10 @@ mod tests {
             &r,
             Some("C:\\Program Files\\firefox.exe"),
             Some("1.2.3.4".parse().unwrap()),
-            None,
+            NameSet {
+                host: None,
+                extra: &[]
+            },
             8001,
             true,
             false
@@ -721,7 +758,10 @@ mod tests {
             &r,
             Some("/usr/bin/wget"),
             Some("1.2.3.4".parse().unwrap()),
-            None,
+            NameSet {
+                host: None,
+                extra: &[]
+            },
             80,
             true,
             false
@@ -731,7 +771,10 @@ mod tests {
             &r,
             None,
             Some("1.2.3.4".parse().unwrap()),
-            None,
+            NameSet {
+                host: None,
+                extra: &[]
+            },
             80,
             true,
             false
@@ -782,11 +825,25 @@ mod tests {
             &r,
             Some("chrome"),
             None,
-            None,
+            NameSet {
+                host: None,
+                extra: &[]
+            },
             1,
             true,
             false
         ));
-        assert!(rule_matches(&r, Some("chrome"), None, None, 1, true, true));
+        assert!(rule_matches(
+            &r,
+            Some("chrome"),
+            None,
+            NameSet {
+                host: None,
+                extra: &[]
+            },
+            1,
+            true,
+            true
+        ));
     }
 }

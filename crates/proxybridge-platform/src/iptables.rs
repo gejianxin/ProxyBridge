@@ -10,8 +10,9 @@ pub fn iptables_script(listen_port: u16, proxy_host: &str, proxy_port: u16) -> S
     let mark = LINUX_FW_MARK;
     let mut out = String::new();
     out.push_str(
-        "# IPv4 TCP redirect for ProxyBridge. IPv6 and transparent UDP are not generated.\n",
+        "# IPv4 redirect for ProxyBridge. TCP uses SO_ORIGINAL_DST. UDP uses IP_RECVORIGDSTADDR.\n",
     );
+    out.push_str("# IPv6 is not generated. UDP replies need CAP_NET_ADMIN for IP_TRANSPARENT.\n");
     out.push_str(
         "# Apply as root. The mark keeps ProxyBridge's own sockets out of the redirect.\n",
     );
@@ -30,6 +31,17 @@ pub fn iptables_script(listen_port: u16, proxy_host: &str, proxy_port: u16) -> S
     out.push_str(&format!(
         "iptables -t nat -A OUTPUT -p tcp -j REDIRECT --to-ports {listen_port}\n"
     ));
+    out.push_str(&format!(
+        "iptables -t nat -C OUTPUT -p udp -m mark --mark {mark} -j RETURN 2>/dev/null || iptables -t nat -A OUTPUT -p udp -m mark --mark {mark} -j RETURN\n"
+    ));
+    if proxy_host.parse::<IpAddr>().is_ok() {
+        out.push_str(&format!(
+            "iptables -t nat -C OUTPUT -p udp -d {proxy_host} --dport {proxy_port} -j RETURN 2>/dev/null || iptables -t nat -A OUTPUT -p udp -d {proxy_host} --dport {proxy_port} -j RETURN\n"
+        ));
+    }
+    out.push_str(&format!(
+        "iptables -t nat -A OUTPUT -p udp -j REDIRECT --to-ports {listen_port}\n"
+    ));
     out.push_str("\n# Remove with:\n");
     out.push_str(&format!(
         "# iptables -t nat -D OUTPUT -p tcp -m mark --mark {mark} -j RETURN\n"
@@ -41,6 +53,17 @@ pub fn iptables_script(listen_port: u16, proxy_host: &str, proxy_port: u16) -> S
     }
     out.push_str(&format!(
         "# iptables -t nat -D OUTPUT -p tcp -j REDIRECT --to-ports {listen_port}\n"
+    ));
+    out.push_str(&format!(
+        "# iptables -t nat -D OUTPUT -p udp -m mark --mark {mark} -j RETURN\n"
+    ));
+    if proxy_host.parse::<IpAddr>().is_ok() {
+        out.push_str(&format!(
+            "# iptables -t nat -D OUTPUT -p udp -d {proxy_host} --dport {proxy_port} -j RETURN\n"
+        ));
+    }
+    out.push_str(&format!(
+        "# iptables -t nat -D OUTPUT -p udp -j REDIRECT --to-ports {listen_port}\n"
     ));
     out
 }
@@ -57,5 +80,6 @@ mod tests {
         assert!(text.contains("--dport 7898"));
         assert!(text.contains("--mark 1"));
         assert!(text.contains("REDIRECT"));
+        assert!(text.contains("-p udp"));
     }
 }

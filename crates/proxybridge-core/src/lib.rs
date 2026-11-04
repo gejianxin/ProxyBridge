@@ -6,6 +6,7 @@
 
 mod config;
 mod decision;
+mod dns;
 mod error;
 mod http_connect;
 mod relay;
@@ -17,6 +18,7 @@ pub use config::{
     ProxyKind, DEFAULT_PROXY_HOST, DEFAULT_PROXY_PORT, DEFAULT_PROXY_TYPE,
 };
 pub use decision::{Decision, DecisionAction, Flow, Transport};
+pub use dns::DnsCache;
 pub use error::{Error, Result};
 pub use http_connect::http_connect;
 pub use relay::splice_tcp;

@@ -12,7 +12,10 @@ use proxybridge_core::{
     overrides_from_env, parse_proxy_spec, Config, DecisionAction, Flow, Overrides, ProxyKind,
     Transport,
 };
-use proxybridge_platform::{backend_lines, iptables_script, LocalSocks, RedirectProxy};
+use proxybridge_platform::{
+    backend_lines, iptables_script, ExtensionBridge, LocalSocks, RedirectProxy, WinDivertProxy,
+    EXTENSION_HELPER_PORT,
+};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -74,7 +77,7 @@ struct CommonArgs {
 struct RunArgs {
     #[command(flatten)]
     common: CommonArgs,
-    /// socks (every OS) or redirect (Linux transparent TCP).
+    /// socks, redirect (Linux TCP+UDP), windivert (Windows), or extension (Network Extension helper).
     #[arg(long, default_value = "socks")]
     mode: String,
     /// Listen address. Defaults to 127.0.0.1:2080 for socks and 127.0.0.1:34010 for redirect.
@@ -183,8 +186,36 @@ async fn cmd_run(args: RunArgs) -> Result<(), Box<dyn std::error::Error>> {
             wait_for_shutdown().await;
             server.shutdown().await?;
         }
+        "windivert" => {
+            let listen = parse_listen(args.listen.as_deref(), "127.0.0.1:34010")?;
+            let server = WinDivertProxy::spawn(listen, Arc::clone(&config)).await?;
+            println!(
+                "proxybridge windivert listening on {} upstream {proxy}",
+                server.local_addr()
+            );
+            println!("WinDivert.dll and WinDivert64.sys must sit beside this executable.");
+            wait_for_shutdown().await;
+            server.shutdown().await?;
+        }
+        "extension" | "network-extension" => {
+            let default_listen = format!("127.0.0.1:{EXTENSION_HELPER_PORT}");
+            let listen = parse_listen(args.listen.as_deref(), &default_listen)?;
+            let server = ExtensionBridge::spawn(listen, Arc::clone(&config)).await?;
+            println!(
+                "proxybridge extension helper on {} upstream {proxy}",
+                server.local_addr()
+            );
+            println!(
+                "Point the macOS Network Extension at this address. Signing is required; see README."
+            );
+            wait_for_shutdown().await;
+            server.shutdown().await?;
+        }
         other => {
-            return Err(format!("unknown mode '{other}' (expected socks or redirect)").into());
+            return Err(format!(
+                "unknown mode '{other}' (expected socks, redirect, windivert, or extension)"
+            )
+            .into());
         }
     }
     Ok(())
@@ -198,6 +229,7 @@ fn decide_line(config: &Config, args: &DecideArgs) -> Result<String, Box<dyn std
         process_path: args.process.clone(),
         dest_ip: dest.ip,
         dest_host: args.host.clone().or(dest.host),
+        learned_names: Vec::new(),
         dest_port: dest.port,
         protocol: proto,
     };

@@ -85,7 +85,7 @@ async fn spawn_linux(
         upstream = %config.primary().label(),
         "redirect listener started; install the rules from `proxybridge iptables` before expecting diverted connections"
     );
-    let task = tokio::spawn(async move { serve(listener, runtime, rx).await });
+    let task = tokio::spawn(async move { serve(listener, local_addr, runtime, rx).await });
     Ok(RedirectProxy {
         local_addr,
         shutdown_tx: tx,
@@ -96,9 +96,17 @@ async fn spawn_linux(
 #[cfg(target_os = "linux")]
 async fn serve(
     listener: TcpListener,
+    local_addr: SocketAddr,
     runtime: Arc<Runtime>,
     mut shutdown: watch::Receiver<bool>,
 ) -> Result<(), BridgeError> {
+    let udp_rt = Arc::clone(&runtime);
+    let udp_stop = shutdown.clone();
+    tokio::spawn(async move {
+        if let Err(err) = crate::udp_redirect::serve(local_addr, udp_rt, udp_stop).await {
+            tracing::warn!(error = %err, "transparent udp listener stopped");
+        }
+    });
     let mut clients = JoinSet::new();
     loop {
         tokio::select! {

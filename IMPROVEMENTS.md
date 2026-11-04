@@ -24,7 +24,7 @@ None of this is a reason the original is unusable. It is a reason a new default 
 
 - `proxybridge-core` owns configuration, the first-match rule engine, SOCKS5 (TCP CONNECT and UDP ASSOCIATE), and HTTP CONNECT. Tests cover the matcher, the default endpoint, and handshakes against local mocks.
 - The coded default upstream is SOCKS5 `127.0.0.1:7898`, including omitted TOML fields. Environment variables and CLI flags override it. The example file `proxybridge.toml` records the same values.
-- `proxybridge-platform` has a real userspace SOCKS inbound on every OS, plus a Linux TCP redirect listener (`SO_ORIGINAL_DST`, `SO_MARK`, generated iptables). WinDivert and the macOS Network Extension are functions that return a clear error. `proxybridge backends` prints the same status.
+- `proxybridge-platform` has a userspace SOCKS inbound on every OS, a Linux TCP and UDP redirect path, a WinDivert 2.2 IPv4 rewrite loop, and a Network Extension helper. `proxybridge backends` says the driver and the Apple signature are still required on those hosts.
 - CI runs `cargo test` and `cargo clippy` on Linux x64, and `cargo check` for Linux x64, Linux arm64, Windows x64, macOS x64, and macOS arm64.
 - Patterns that do not fit are errors. They are not truncated.
 
@@ -35,15 +35,19 @@ Behavior kept on purpose, because changing it would surprise people coming from 
 - Multicast, broadcast, `0.0.0.0/8`, IPv6 link-local, DHCP, and port 53 (unless `dns_via_proxy`) stay direct.
 - Traffic to the configured proxy address stays direct so the tunnel is not sent into itself.
 
-## Remaining work
+## What landed after the first Rust commit
 
-In rough order of what would make the Rust build a full replacement:
+- **WinDivert (Windows x64).** `packet.rs` parses and rewrites IPv4 TCP/UDP, keeps a NAT table, and is unit tested on Linux. `windivert_driver.rs` loads WinDivert 2.2 (`WinDivertOpen` / `Recv` / `Send` / `Shutdown`) and feeds the shared `decide` function. Process ownership uses `GetExtendedTcpTable` and `GetExtendedUdpTable`. The DLL and `WinDivert64.sys` are not in the repo. `--mode windivert` on a non-Windows host says so. A Windows machine still has to install the driver, run elevated, and confirm a real flow.
+- **Network Extension (macOS x64 and Apple Silicon).** `--mode extension` is a tested TCP helper (`PB` header, then a raw stream). `macos/NetworkExtension/AppProxyProvider.swift` is an `NEAppProxyProvider` that writes that header. The entitlement file asks for `app-proxy-provider`. Nothing here is signed or notarized. `cargo check` covers both Darwin targets; Xcode on a Mac has to produce the extension.
+- **Linux transparent UDP and DNS.** iptables `REDIRECT` for UDP, `IP_RECVORIGDSTADDR`, and `IP_TRANSPARENT` replies. DNS responses that the process forwards are parsed (A and AAAA, compression pointers) and stored. A later flow to that address matches a domain rule. DoH and DoT still bypass it.
+- **Process match.** Linux `/proc` now covers UDP as well as TCP. Windows uses the IP helper owner-PID tables. macOS walks libproc using the xnu `proc_info.h` layout (the `In4In6` size is asserted). The macOS walk has not been executed on a Mac.
 
-1. Windows transparent capture. Link WinDivert (driver + DLL), map the flow to a process with the extended TCP/UDP tables, and feed the shared `decide` function. Do not claim this until a Windows VM can pass a TCP and UDP test.
-2. macOS transparent capture. That is a Network Extension target with its own signing story, not a `cfg` block inside the CLI. Intel and Apple Silicon would share the extension code the way the userspace SOCKS path already does.
-3. Linux transparent UDP, and DNS snooping so a redirected flow can match a domain the app resolved. The C port learns names from unencrypted DNS; DoH still bypasses that.
-4. Stronger Linux process identity (cgroup or eBPF) for the redirect path. `/proc` lookup works for the tests here and loses the race under PID reuse or hidden network namespaces.
-5. A small GUI or tray only after the engine's config file is the one format every OS edits. Importing the old `.pbprofile` JSON would be a separate parser, not a second rule engine.
-6. Inbound authentication, and a documented non-loopback bind, if someone needs the SOCKS listener off localhost. Today a non-loopback listen is warned about and left open.
+## Still open
 
-Until those exist, use `--mode socks` everywhere and `--mode redirect` on Linux for transparent TCP. Keep the original C or Swift build where a kernel path is required.
+1. Run `--mode windivert` on Windows x64 with the official driver and fix whatever the live address flags or checksums do differently from the unit tests. IPv6 rewrite is not implemented.
+2. Build and sign the Swift provider on a Mac, then confirm `handleNewFlow` against the helper. The extension currently copies app-to-helper bytes; a production copy would also pump helper-to-app data with backpressure.
+3. cgroup or eBPF identity on Linux. `/proc` still races with PID reuse.
+4. A GUI, and an importer for the old `.pbprofile` JSON, only after this config file stays the one format.
+5. Inbound authentication if the SOCKS listener is ever bound off loopback.
+
+Until the Windows driver and the Apple signature are exercised on those hosts, `--mode socks` is the path that is known to run everywhere, and `--mode redirect` is the transparent path known to run on Linux.

@@ -27,13 +27,13 @@ With no rules in the file, one enabled catch-all rule proxies matching traffic. 
 | Backend | Targets | Status |
 | --- | --- | --- |
 | `socks` | Linux x64, Linux arm64, Windows x64, macOS x64, macOS arm64 | Implemented. Userspace SOCKS5 listener. TCP CONNECT is relayed through SOCKS5 or HTTP CONNECT. UDP ASSOCIATE is relayed for SOCKS5 upstreams and for direct destinations. |
-| `redirect` | Linux x64 and arm64 | Implemented for IPv4/IPv6 TCP. Listens locally, reads `SO_ORIGINAL_DST` after iptables `REDIRECT`, and marks its own sockets with `SO_MARK` so they are not redirected again. |
-| WinDivert | Windows x64 | Stub. `start_windivert` returns an error. Use `--mode socks`. |
-| Network Extension | macOS x64 and Apple Silicon | Stub. The Swift system extension is not reimplemented. Use `--mode socks`. Both architectures compile the userspace path. |
+| `redirect` | Linux x64 and arm64 | Implemented for TCP (`SO_ORIGINAL_DST`) and UDP (`IP_RECVORIGDSTADDR`). DNS replies this process forwards are remembered so a later flow can match a domain rule. |
+| `windivert` | Windows x64 | Implemented against the WinDivert 2.2 ABI. IPv4 TCP and UDP are rewritten to a local listener. The DLL and `WinDivert64.sys` are not bundled; a Windows host must install them and run elevated. |
+| `extension` | macOS x64 and Apple Silicon | The Rust helper is implemented. The Swift `NEAppProxyProvider` is in `macos/NetworkExtension` and must be signed on a Mac. This build does not notarize it. |
 
 `proxybridge backends` prints this table from the binary.
 
-Process-specific rules are attributed from `/proc` on Linux. On Windows and macOS the SOCKS client process is not identified yet, so only `process = "*"` rules match. Domain rules match the name the client asked for. If a rule contains an IP pattern and the client sent a domain, the engine resolves one address and matches against that. There is no DNS snooping of the application's own packets, which the C port does.
+Process rules use `/proc` on Linux, the IP helper tables (`GetExtendedTcpTable` / `GetExtendedUdpTable`) on Windows, and libproc on macOS. The macOS layout follows xnu `proc_info.h` and still needs a Mac to confirm a live socket. The Network Extension sends the app signing identifier in the flow header, because the helper's TCP peer is the extension, not the app. Domain rules match a name the client sent, or a name learned from a DNS reply that ProxyBridge itself forwarded. DoH and DoT are not visible.
 
 ## Build
 
@@ -68,7 +68,7 @@ cargo build --release -p proxybridge-cli
 
 The SOCKS inbound listens on `127.0.0.1:2080` unless `--listen` is set. Point a proxy-aware app at it, or use it as the local side while you develop rules. The upstream is `127.0.0.1:7898` unless overridden.
 
-Transparent TCP (root or `CAP_NET_ADMIN`):
+Transparent TCP and UDP (root or `CAP_NET_ADMIN`):
 
 ```bash
 sudo ./target/release/proxybridge run --mode redirect
@@ -76,7 +76,7 @@ sudo ./target/release/proxybridge run --mode redirect
 ./target/release/proxybridge iptables --no-config
 ```
 
-`redirect` is IPv4 and IPv6 TCP only. Transparent UDP is not implemented. The printed rules RETURN marked packets and, when the proxy host is an IP, packets addressed to that proxy, then `REDIRECT` other TCP to the listen port.
+The printed rules RETURN marked packets and, when the proxy host is an IP, packets addressed to that proxy, then `REDIRECT` other IPv4 TCP and UDP to the listen port. UDP replies use `IP_TRANSPARENT` so the application sees the original source. Without `CAP_NET_ADMIN` the reply cannot be spoofed.
 
 ### Linux arm64
 
@@ -106,7 +106,13 @@ cargo build --release -p proxybridge-cli
 .\target\release\proxybridge.exe run --mode socks
 ```
 
-`cargo check --target x86_64-pc-windows-msvc` succeeds from Linux. Linking that target needs the MSVC linker on Windows, or `x86_64-pc-windows-gnu` with mingw-w64. `--mode redirect` is rejected on Windows. The WinDivert capture loop from the C port is not linked; calling the stub reports that plainly.
+`cargo check --target x86_64-pc-windows-msvc` succeeds from Linux and compiles the WinDivert loop. Linking that target needs the MSVC linker on Windows, or `x86_64-pc-windows-gnu` with mingw-w64.
+
+```powershell
+.\target\release\proxybridge.exe run --mode windivert
+```
+
+That mode loads `WinDivert.dll` (WinDivert 2.2) and rewrites outbound IPv4 TCP and UDP toward `127.0.0.1:34010`, then relays them with the shared engine. Place `WinDivert.dll` and `WinDivert64.sys` next to the executable and run elevated. This repository does not ship those files, and the driver has not been executed in this environment. `--mode redirect` stays Linux-only.
 
 ### macOS x64 and Apple Silicon
 
@@ -120,7 +126,13 @@ rustup target add aarch64-apple-darwin
 cargo check -p proxybridge-cli --target aarch64-apple-darwin
 ```
 
-Linking a macOS binary needs a Mac (or a full osxcross SDK). Both architectures are supported by the userspace SOCKS backend. The Network Extension transparent proxy is a stub: it needs Apple entitlements and a signed system extension, and this tree does not claim to ship one. `--mode socks` is the path that runs. `--mode redirect` is rejected.
+Linking a macOS binary needs a Mac (or a full osxcross SDK). Both architectures compile `--mode socks`, the libproc lookup, and `--mode extension`.
+
+```bash
+./target/release/proxybridge run --mode extension
+```
+
+The helper listens on `127.0.0.1:34080`. `macos/NetworkExtension/AppProxyProvider.swift` is an `NEAppProxyProvider` that speaks that header. `ProxyBridgeExtension.entitlements` asks for `app-proxy-provider`. Apple has to sign the extension with a development or Developer ID profile; this tree has no provisioning profile and does not notarize anything. `--mode redirect` is rejected. `--mode windivert` is rejected.
 
 ## Rules and commands
 
@@ -146,7 +158,7 @@ Rules are first-match. Patterns follow the original Linux matcher:
 
 - One Cargo workspace instead of a Win32 tree, a GTK/eBPF tree, and an Xcode app.
 - Rules, SOCKS5, and HTTP CONNECT live in `crates/proxybridge-core` and are tested without a driver.
-- Platform code is behind `crates/proxybridge-platform`. Linux TCP redirect is real. WinDivert and Network Extension are stubs that fail with an explicit error.
+- Platform code is behind `crates/proxybridge-platform`. Linux redirect covers TCP and UDP. WinDivert is a real 2.2 capture loop that still needs the driver on Windows. The Network Extension helper runs everywhere; the Swift provider still needs a signature.
 - The default upstream is SOCKS5 `127.0.0.1:7898` rather than "whatever the last GUI profile saved".
 - No GUI, no update checker, no installer, and no eBPF program in the Rust build.
 - Over-long patterns are rejected. The C splitter silently truncates a token at 255 bytes.
@@ -159,7 +171,8 @@ See [IMPROVEMENTS.md](IMPROVEMENTS.md) for the upstream findings and what is sti
 Cargo.toml                      workspace
 proxybridge.toml                example and default config
 crates/proxybridge-core         config, rules, SOCKS5, HTTP CONNECT
-crates/proxybridge-platform     socks inbound, Linux redirect, stubs
+crates/proxybridge-platform     socks, Linux redirect, WinDivert, extension helper
+macos/NetworkExtension         Swift provider, entitlements, Info.plist
 crates/proxybridge-cli          `proxybridge` binary
 scripts/check-targets.sh        cargo check for the five targets
 .github/workflows/rust.yml      test, clippy, and those checks
@@ -167,9 +180,10 @@ scripts/check-targets.sh        cargo check for the five targets
 
 ## Limitations
 
-- Not a transparent proxy on Windows or macOS yet. Apps must use the SOCKS listener, or you stay on the original C/Swift build for kernel diversion.
-- Linux transparent mode is TCP only and depends on iptables NAT `REDIRECT` plus `CAP_NET_ADMIN` for `SO_MARK`.
-- No per-packet DNS snooping, so a transparent flow is matched by IP and port, not by the name the app looked up.
+- Windows transparent mode needs WinDivert installed and has not been run on a Windows machine from this environment. IPv6 packets are passed through unchanged.
+- macOS transparent mode needs the Swift provider built and signed on a Mac. The helper protocol is tested here; the extension binary is not.
+- Linux transparent UDP spoofed replies need `CAP_NET_ADMIN`. DNS learning covers replies that ProxyBridge forwards, not DoH/DoT and not answers that never pass through the process.
+- The macOS libproc layout is checked for size, not against a live socket, until it runs on a Mac.
 - Inbound SOCKS has no authentication. It binds to loopback unless you pass another `--listen`. A non-loopback bind is an open proxy on that interface; the process logs a warning.
 - The engine does not decrypt TLS and does not modify application data.
 

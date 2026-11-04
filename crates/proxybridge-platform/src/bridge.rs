@@ -7,10 +7,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use proxybridge_core::{
-    client_handshake, http_connect, splice_tcp, Config, Decision, DecisionAction, Flow, ProxyKind,
-    SocksTarget, Transport, CMD_CONNECT,
+    client_handshake, http_connect, splice_tcp, Config, Decision, DecisionAction, DnsCache, Flow,
+    ProxyKind, SocksTarget, Transport, CMD_CONNECT,
 };
-use tokio::net::{lookup_host, TcpSocket, TcpStream};
+use tokio::net::{lookup_host, TcpSocket, TcpStream, UdpSocket};
 
 use crate::process::lookup_peer_process;
 
@@ -51,6 +51,7 @@ impl OpenError {
 
 pub struct Runtime {
     pub config: Arc<Config>,
+    pub dns: DnsCache,
     dedup: Mutex<HashSet<String>>,
     pub fwmark: bool,
 }
@@ -59,6 +60,7 @@ impl Runtime {
     pub fn new(config: Arc<Config>, fwmark: bool) -> Self {
         Self {
             config,
+            dns: DnsCache::new(),
             dedup: Mutex::new(HashSet::new()),
             fwmark,
         }
@@ -137,11 +139,13 @@ pub async fn build_flow(
     process: Option<String>,
     target: &SocksTarget,
     protocol: Transport,
+    dns: &DnsCache,
 ) -> Flow {
     let mut flow = Flow {
         process_path: process,
         dest_ip: target.ip(),
         dest_host: target.domain().map(str::to_string),
+        learned_names: Vec::new(),
         dest_port: target.port(),
         protocol,
     };
@@ -152,7 +156,46 @@ pub async fn build_flow(
             }
         }
     }
+    if let Some(ip) = flow.dest_ip {
+        let names = dns.names(ip);
+        if flow.dest_host.is_none() {
+            flow.dest_host = names.first().cloned();
+        }
+        flow.learned_names = names;
+    }
     flow
+}
+
+/// Send one UDP payload and wait for a single reply. Linux marks the socket
+/// so a redirect rule does not capture it again.
+#[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
+pub async fn udp_exchange(
+    payload: &[u8],
+    dest: SocketAddr,
+    fwmark: bool,
+) -> std::io::Result<Vec<u8>> {
+    let bind: SocketAddr = if dest.is_ipv4() {
+        SocketAddr::from((std::net::Ipv4Addr::UNSPECIFIED, 0))
+    } else {
+        SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, 0))
+    };
+    let sock = UdpSocket::bind(bind).await?;
+    #[cfg(target_os = "linux")]
+    if fwmark {
+        use std::os::fd::AsRawFd;
+        crate::linux_net::set_fwmark(sock.as_raw_fd())?;
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = fwmark;
+    }
+    sock.send_to(payload, dest).await?;
+    let mut buf = vec![0u8; 65535];
+    let received = tokio::time::timeout(Duration::from_secs(3), sock.recv_from(&mut buf))
+        .await
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "udp reply timed out"))??;
+    buf.truncate(received.0);
+    Ok(buf)
 }
 
 pub fn process_path_for(peer: SocketAddr) -> Option<String> {
@@ -172,7 +215,14 @@ pub async fn relay_tcp(
     target: SocksTarget,
     socks_reply: bool,
 ) -> Result<(), BridgeError> {
-    let flow = build_flow(&rt.config, process_path_for(peer), &target, Transport::Tcp).await;
+    let flow = build_flow(
+        &rt.config,
+        process_path_for(peer),
+        &target,
+        Transport::Tcp,
+        &rt.dns,
+    )
+    .await;
     let decision = rt.config.decide(&flow);
     rt.log_decision(&flow, &decision);
     match rt.open_tcp(&decision, &target).await {

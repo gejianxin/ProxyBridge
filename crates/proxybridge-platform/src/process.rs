@@ -17,13 +17,36 @@ pub struct ProcessInfo {
 }
 
 pub fn lookup_peer_process(peer: SocketAddr) -> Option<ProcessInfo> {
+    dispatch(peer, false)
+}
+
+/// Owner of a UDP socket bound to `local` (the source of a datagram).
+#[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
+pub fn lookup_udp_process(local: SocketAddr) -> Option<ProcessInfo> {
+    dispatch(local, true)
+}
+
+fn dispatch(addr: SocketAddr, udp: bool) -> Option<ProcessInfo> {
     #[cfg(target_os = "linux")]
     {
-        linux_lookup(normalize(peer))
+        linux_lookup(normalize(addr), udp)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
     {
-        let _ = peer;
+        if udp {
+            crate::windows_proc::lookup_udp(addr)
+        } else {
+            crate::windows_proc::lookup_tcp(addr)
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = udp;
+        crate::macos_proc::lookup(addr)
+    }
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+    {
+        let _ = (addr, udp);
         None
     }
 }
@@ -43,8 +66,8 @@ fn normalize(addr: SocketAddr) -> SocketAddr {
 }
 
 #[cfg(target_os = "linux")]
-fn linux_lookup(peer: SocketAddr) -> Option<ProcessInfo> {
-    let inodes = inodes_for(peer);
+fn linux_lookup(peer: SocketAddr, udp: bool) -> Option<ProcessInfo> {
+    let inodes = inodes_for(peer, udp);
     if inodes.is_empty() {
         return None;
     }
@@ -66,17 +89,22 @@ fn linux_lookup(peer: SocketAddr) -> Option<ProcessInfo> {
 }
 
 #[cfg(target_os = "linux")]
-fn inodes_for(peer: SocketAddr) -> Vec<u64> {
+fn inodes_for(peer: SocketAddr, udp: bool) -> Vec<u64> {
     let mut out = Vec::new();
+    let (v4, v6) = if udp {
+        ("/proc/net/udp", "/proc/net/udp6")
+    } else {
+        ("/proc/net/tcp", "/proc/net/tcp6")
+    };
     match peer.ip() {
-        IpAddr::V4(_) => collect_inodes("/proc/net/tcp", peer, false, &mut out),
-        IpAddr::V6(_) => collect_inodes("/proc/net/tcp6", peer, true, &mut out),
+        IpAddr::V4(_) => collect_inodes(v4, peer, false, udp, &mut out),
+        IpAddr::V6(_) => collect_inodes(v6, peer, true, udp, &mut out),
     }
     out
 }
 
 #[cfg(target_os = "linux")]
-fn collect_inodes(path: &str, peer: SocketAddr, v6: bool, out: &mut Vec<u64>) {
+fn collect_inodes(path: &str, peer: SocketAddr, v6: bool, any_state: bool, out: &mut Vec<u64>) {
     let Ok(text) = std::fs::read_to_string(path) else {
         return;
     };
@@ -85,8 +113,9 @@ fn collect_inodes(path: &str, peer: SocketAddr, v6: bool, out: &mut Vec<u64>) {
         if fields.len() < 10 {
             continue;
         }
-        // Established sockets only, so a TIME_WAIT row cannot steal the port.
-        if fields[3] != "01" {
+        // TCP: established only, so a TIME_WAIT row cannot steal the port.
+        // UDP sockets are not in state 01.
+        if !any_state && fields[3] != "01" {
             continue;
         }
         let Some(local) = parse_proc_addr(fields[1], v6) else {

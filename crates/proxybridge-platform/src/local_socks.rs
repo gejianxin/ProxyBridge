@@ -219,6 +219,7 @@ async fn dispatch_udp(
         process_path_for(peer),
         &header.target,
         Transport::Udp,
+        &runtime.dns,
     )
     .await;
     let decision = runtime.config.decide(&flow);
